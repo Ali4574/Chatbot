@@ -184,7 +184,7 @@ async function fetchHistoricalData(ticker, period1, period2, interval = '1d') {
 async function getStockPrice(symbols, underPrice) {
   const results = [];
   const now = new Date();
-  const past30Days = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const past30Days = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
   for (let symbol of symbols) {
     try {
       let querySymbol = symbol;

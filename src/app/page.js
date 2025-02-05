@@ -121,8 +121,8 @@ const ChartDisplay = ({ chartData, chartType, chartTitle }) => {
                 title: {
                     display: true,
                     text:
-                        (chartData.labels && chartData.labels[0] && 
-                         (chartData.labels[0].includes('-') || chartData.labels[0].includes('/')))
+                        (chartData.labels && chartData.labels[0] &&
+                            (chartData.labels[0].includes('-') || chartData.labels[0].includes('/')))
                             ? 'Time'
                             : 'Symbol',
                     color: '#fff',
@@ -224,69 +224,69 @@ export default function Chat() {
             if (assistantMessage.rawData && assistantMessage.rawData.length > 0) {
                 let chartData;
                 let chartTitle = '';
-                
+
                 // Check if historical data exists on the first asset
                 if (assistantMessage.rawData[0].history && assistantMessage.rawData[0].history.length > 0) {
-                  // Use history dates as labels (format as needed)
-                  const labels = assistantMessage.rawData[0].history.map(item => {
-                    // Optionally, format the date string (e.g., MM/DD)
-                    return new Date(item.date).toLocaleDateString();
-                  });
-                  
-                  // For each asset, build a dataset from its historical prices
-                  const datasets = assistantMessage.rawData.map((asset, index) => ({
-                    label: asset.symbol || asset.name || `Asset ${index + 1}`,
-                    data: asset.history.map(item => item.price),
-                    fill: false,
-                    borderColor: `hsl(${(index * 360) / assistantMessage.rawData.length}, 70%, 50%)`,
-                    backgroundColor: `hsl(${(index * 360) / assistantMessage.rawData.length}, 70%, 50%)`,
-                    tension: 0.1,
-                  }));
-                  
-                  chartData = { labels, datasets };
-                  chartTitle = `${assistantMessage.rawData.map(item => item.symbol).join(' & ')} Price History`;
-                } else if (assistantMessage.rawData[0].dates && assistantMessage.rawData[0].prices) {
-                  // Fallback: if realtime data arrays contain more than one element, use them
-                  if (assistantMessage.rawData[0].prices.length > 1) {
-                    chartData = {
-                      labels: assistantMessage.rawData[0].dates,
-                      datasets: assistantMessage.rawData.map((item, index) => ({
-                        label: item.symbol || 'Price',
-                        data: item.prices,
+                    // Use history dates as labels (format as needed)
+                    const labels = assistantMessage.rawData[0].history.map(item => {
+                        // Optionally, format the date string (e.g., MM/DD)
+                        return new Date(item.date).toLocaleDateString();
+                    });
+
+                    // For each asset, build a dataset from its historical prices
+                    const datasets = assistantMessage.rawData.map((asset, index) => ({
+                        label: asset.symbol || asset.name || `Asset ${index + 1}`,
+                        data: asset.history.map(item => item.price),
                         fill: false,
                         borderColor: `hsl(${(index * 360) / assistantMessage.rawData.length}, 70%, 50%)`,
                         backgroundColor: `hsl(${(index * 360) / assistantMessage.rawData.length}, 70%, 50%)`,
                         tension: 0.1,
-                      })),
-                    };
+                    }));
+
+                    chartData = { labels, datasets };
                     chartTitle = `${assistantMessage.rawData.map(item => item.symbol).join(' & ')} Price History`;
-                  } else {
-                    // Only a single price, so show current price only
-                    chartData = {
-                      labels: assistantMessage.rawData.map((item, index) => item.symbol || `Asset ${index + 1}`),
-                      datasets: [
-                        {
-                          label: 'Current Price',
-                          data: assistantMessage.rawData.map(item => item.prices[0]),
-                          backgroundColor: assistantMessage.rawData.map(
-                            (_, index) =>
-                              `hsl(${(index * 360) / assistantMessage.rawData.length}, 70%, 50%)`
-                          ),
-                          borderColor: assistantMessage.rawData.map(
-                            (_, index) =>
-                              `hsl(${(index * 360) / assistantMessage.rawData.length}, 70%, 50%)`
-                          ),
-                          borderWidth: 1,
-                        },
-                      ],
-                    };
-                    chartTitle = `${assistantMessage.rawData.map(item => item.symbol).join(' & ')} Current Price`;
-                  }
+                } else if (assistantMessage.rawData[0].dates && assistantMessage.rawData[0].prices) {
+                    // Fallback: if realtime data arrays contain more than one element, use them
+                    if (assistantMessage.rawData[0].prices.length > 1) {
+                        chartData = {
+                            labels: assistantMessage.rawData[0].dates,
+                            datasets: assistantMessage.rawData.map((item, index) => ({
+                                label: item.symbol || 'Price',
+                                data: item.prices,
+                                fill: false,
+                                borderColor: `hsl(${(index * 360) / assistantMessage.rawData.length}, 70%, 50%)`,
+                                backgroundColor: `hsl(${(index * 360) / assistantMessage.rawData.length}, 70%, 50%)`,
+                                tension: 0.1,
+                            })),
+                        };
+                        chartTitle = `${assistantMessage.rawData.map(item => item.symbol).join(' & ')} Price History`;
+                    } else {
+                        // Only a single price, so show current price only
+                        chartData = {
+                            labels: assistantMessage.rawData.map((item, index) => item.symbol || `Asset ${index + 1}`),
+                            datasets: [
+                                {
+                                    label: 'Current Price',
+                                    data: assistantMessage.rawData.map(item => item.prices[0]),
+                                    backgroundColor: assistantMessage.rawData.map(
+                                        (_, index) =>
+                                            `hsl(${(index * 360) / assistantMessage.rawData.length}, 70%, 50%)`
+                                    ),
+                                    borderColor: assistantMessage.rawData.map(
+                                        (_, index) =>
+                                            `hsl(${(index * 360) / assistantMessage.rawData.length}, 70%, 50%)`
+                                    ),
+                                    borderWidth: 1,
+                                },
+                            ],
+                        };
+                        chartTitle = `${assistantMessage.rawData.map(item => item.symbol).join(' & ')} Current Price`;
+                    }
                 }
                 assistantMessage.chartData = chartData;
                 assistantMessage.chartTitle = chartTitle;
-              }
-              
+            }
+
 
             setMessages((prev) => [...prev, assistantMessage]);
         } catch (error) {
@@ -452,8 +452,26 @@ export default function Chat() {
                         onChange={(e) => setInput(e.target.value)}
                         placeholder="Ask for stock/crypto price"
                         sx={{
-                            backgroundColor: '#1e1e1e',
-                            borderRadius: '8px',
+                            // Target the OutlinedInput root for custom styling
+                            '& .MuiOutlinedInput-root': {
+                                backgroundColor: '#1e1e1e',
+                                borderRadius: '8px',
+                                // Set a white border on the root container
+                                border: '1px solid #2196f3',
+                                // Ensure the fieldset (the actual outline) uses the same border color
+                                '& fieldset': {
+                                    borderColor: '#2196f3',
+                                },
+                                // Keep the same border color on hover
+                                '&:hover fieldset': {
+                                    borderColor: '#fff',
+                                },
+                                // Maintain the border color when focused
+                                '&.Mui-focused fieldset': {
+                                    borderColor: '#fff',
+                                },
+                            },
+                            // Optionally, set the input text color
                             input: { color: '#fff' },
                         }}
                         InputProps={{
@@ -464,6 +482,7 @@ export default function Chat() {
                             ),
                         }}
                     />
+
                 </Box>
             </ChatContainer>
         </Box>
