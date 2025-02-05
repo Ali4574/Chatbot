@@ -1,0 +1,676 @@
+//chat.js
+
+
+// import OpenAI from 'openai';
+// import axios from 'axios';
+
+// const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+// const functions = [
+//   {
+//     name: 'get_stock_price',
+//     description: 'Get current stock price and basic information',
+//     parameters: {
+//       type: 'object',
+//       properties: {
+//         symbol: { type: 'string', description: 'Stock symbol like AAPL for Apple' },
+//       },
+//       required: ['symbol'],
+//     },
+//   },
+//   {
+//     name: 'get_crypto_price',
+//     description: 'Get current cryptocurrency price and basic information',
+//     parameters: {
+//       type: 'object',
+//       properties: {
+//         symbol: { type: 'string', description: 'Cryptocurrency symbol like BTC for Bitcoin' },
+//       },
+//       required: ['symbol'],
+//     },
+//   },
+// ];
+
+// async function getStockPrice(symbol) {
+//   const response = await axios.get('https://alpha-vantage.p.rapidapi.com/query', {
+//     params: {
+//       function: 'GLOBAL_QUOTE',
+//       symbol: symbol,
+//       datatype: 'json',
+//     },
+//     headers: {
+//       'X-RapidAPI-Key': process.env.RAPIDAPI_KEY,
+//       'X-RapidAPI-Host': process.env.NEXT_PUBLIC_RAPIDAPI_HOST,
+//     },
+//   });
+  
+//   return {
+//     price: response.data['Global Quote']['05. price'],
+//     change: response.data['Global Quote']['09. change'],
+//     changePercent: response.data['Global Quote']['10. change percent'],
+//     latestTradingDay: response.data['Global Quote']['07. latest trading day'],
+//   };
+// }
+
+// async function getCryptoPrice(symbol) {
+//   const response = await axios.get('https://alpha-vantage.p.rapidapi.com/query', {
+//     params: {
+//       function: 'CURRENCY_EXCHANGE_RATE',
+//       from_currency: symbol,
+//       to_currency: 'USD',
+//     },
+//     headers: {
+//       'X-RapidAPI-Key': process.env.RAPIDAPI_KEY,
+//       'X-RapidAPI-Host': process.env.NEXT_PUBLIC_RAPIDAPI_HOST,
+//     },
+//   });
+
+//   return {
+//     price: response.data['Realtime Currency Exchange Rate']['5. Exchange Rate'],
+//     lastRefreshed: response.data['Realtime Currency Exchange Rate']['6. Last Refreshed'],
+//     bidPrice: response.data['Realtime Currency Exchange Rate']['8. Bid Price'],
+//     askPrice: response.data['Realtime Currency Exchange Rate']['9. Ask Price'],
+//   };
+// }
+
+// export default async function handler(req, res) {
+//   if (req.method !== 'POST') return res.status(405).end();
+
+//   try {
+//     const { messages } = req.body;
+//     const initialResponse = await openai.chat.completions.create({
+//       model: 'gpt-3.5-turbo',
+//       messages,
+//       functions,
+//       function_call: 'auto',
+//     });
+
+//     const message = initialResponse.choices[0].message;
+    
+//     if (message.function_call) {
+//       const functionName = message.function_call.name;
+//       const args = JSON.parse(message.function_call.arguments);
+//       let functionResponse;
+
+//       if (functionName === 'get_stock_price') {
+//         functionResponse = await getStockPrice(args.symbol);
+//       } else if (functionName === 'get_crypto_price') {
+//         functionResponse = await getCryptoPrice(args.symbol);
+//       }
+
+//       // Structured response template
+//       const responseTemplate = `Generate a professional financial response including:
+//       1. Current price with change percentage in bold
+//       2. Key statistics in a simple table
+//       3. Brief market context (1-2 sentences)
+//       4. Recent relevant news (use placeholder if no real data)
+//       5. Standard disclaimer
+      
+//       Use this data: ${JSON.stringify(functionResponse)}
+//       Format with clean line breaks and ► bullet points.`;
+
+//       const finalResponse = await openai.chat.completions.create({
+//         model: 'gpt-3.5-turbo',
+//         messages: [
+//           ...messages,
+//           {
+//             role: 'system',
+//             content: 'You are a financial analyst assistant. Provide responses in structured markdown format without emojis.'
+//           },
+//           {
+//             role: 'user',
+//             content: responseTemplate
+//           }
+//         ],
+//         temperature: 0.6,
+//         max_tokens: 500,
+//       });
+
+//       return res.json({ 
+//         message: {
+//           ...finalResponse.choices[0].message,
+//           rawData: functionResponse // Optional: include raw data for reference
+//         }
+//       });
+//     }
+
+//     res.json({ message });
+//   } catch (error) {
+//     console.error('API Error:', error);
+//     res.status(500).json({ 
+//       error: 'Financial data currently unavailable. Please try again later.',
+//       details: process.env.NODE_ENV === 'development' ? error.message : undefined
+//     });
+//   }
+// }
+
+
+
+
+//index.js
+
+// import { useState, useRef, useEffect } from 'react';
+// import axios from 'axios';
+// import { Box, TextField, Button, CircularProgress, Avatar, Typography, IconButton, Grid, Paper } from '@mui/material';
+// import { Send as SendIcon, SmartToy as BotIcon } from '@mui/icons-material';
+// import ReactMarkdown from 'react-markdown';
+// import { styled } from '@mui/material/styles';
+
+// const ChatContainer = styled(Box)(({ theme }) => ({
+//   height: '80vh',
+//   display: 'flex',
+//   flexDirection: 'column',
+//   backgroundColor: theme.palette.background.default,
+//   borderRadius: theme.shape.borderRadius,
+//   boxShadow: theme.shadows[2],
+// }));
+
+// const MessageBubble = styled(Paper)(({ theme, role }) => ({
+//   maxWidth: '70%',
+//   padding: theme.spacing(1.5),
+//   marginBottom: theme.spacing(2),
+//   backgroundColor: role === 'user' ? theme.palette.primary.light : theme.palette.grey[100],
+//   color: role === 'user' ? theme.palette.primary.contrastText : theme.palette.text.primary,
+//   borderRadius: role === 'user' ? '20px 20px 4px 20px' : '20px 20px 20px 4px',
+//   alignSelf: role === 'user' ? 'flex-end' : 'flex-start',
+//   wordBreak: 'break-word',
+// }));
+
+// export default function Chat() {
+//   const [messages, setMessages] = useState([]);
+//   const [input, setInput] = useState('');
+//   const [loading, setLoading] = useState(false);
+//   const messagesEndRef = useRef(null);
+
+//   const scrollToBottom = () => {
+//     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+//   };
+
+//   useEffect(scrollToBottom, [messages]);
+
+//   const handleSubmit = async (e) => {
+//     e.preventDefault();
+//     if (!input.trim() || loading) return;
+
+//     setLoading(true);
+//     const userMessage = { role: 'user', content: input };
+//     setMessages((prev) => [...prev, userMessage]);
+//     setInput('');
+
+//     try {
+//       const { data } = await axios.post('/api/chat', {
+//         messages: [...messages, userMessage],
+//       });
+
+//       setMessages((prev) => [...prev, data.message]);
+//     } catch (error) {
+//       console.error(error.message);
+//       setMessages((prev) => [
+//         ...prev,
+//         { role: 'assistant', content: '⚠️ Error: Unable to process your request.' },
+//       ]);
+//     } finally {
+//       setLoading(false);
+//     }
+//   };
+
+//   return (
+//     <Box sx={{ maxWidth: '800px', mx: 'auto', p: 3, height: '100vh', display: 'flex', flexDirection: 'column' }}>
+//       <Typography
+//         variant="h4"
+//         sx={{
+//           mb: 3,
+//           fontWeight: 600,
+//           color: 'primary.main',
+//           display: 'flex',
+//           alignItems: 'center',
+//           gap: 1.5,
+//         }}
+//       >
+//         <BotIcon fontSize="large" /> Stock & Crypto Assistant
+//       </Typography>
+
+//       <ChatContainer>
+//         <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
+//           {messages.map((msg, i) => (
+//             <MessageBubble key={i} role={msg.role} elevation={0}>
+//               <Grid container spacing={1}>
+//                 <Grid item xs={12} sm={3}>
+//                   <Avatar sx={{ width: 32, height: 32, bgcolor: msg.role === 'user' ? 'primary.dark' : 'grey.500' }}>
+//                     {msg.role === 'user' ? '👤' : '🤖'}
+//                   </Avatar>
+//                 </Grid>
+//                 <Grid item xs={12} sm={9}>
+//                   <ReactMarkdown>{msg.content || 'Fetching real-time data...'}</ReactMarkdown>
+//                 </Grid>
+//               </Grid>
+//             </MessageBubble>
+//           ))}
+//           {loading && (
+//             <MessageBubble role="assistant">
+//               <Grid container spacing={1}>
+//                 <Grid item xs={12} sm={3}>
+//                   <Avatar sx={{ width: 32, height: 32, bgcolor: 'grey.500' }}>🤖</Avatar>
+//                 </Grid>
+//                 <Grid item xs={12} sm={9}>
+//                   <CircularProgress size={20} />
+//                 </Grid>
+//               </Grid>
+//             </MessageBubble>
+//           )}
+//           <div ref={messagesEndRef} />
+//         </Box>
+
+//         <Box component="form" onSubmit={handleSubmit} sx={{ p: 2, borderTop: '1px solid', display: 'flex', gap: 1.5 }}>
+//           <TextField
+//             fullWidth
+//             variant="outlined"
+//             size="small"
+//             value={input}
+//             onChange={(e) => setInput(e.target.value)}
+//             placeholder="Ask about stock/crypto prices..."
+//             disabled={loading}
+//           />
+//           <IconButton type="submit" color="primary" disabled={loading}>
+//             <SendIcon />
+//           </IconButton>
+//         </Box>
+//       </ChatContainer>
+//     </Box>
+//   );
+// }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// // pages/api/route.js
+
+// import { NextResponse } from 'next/server';
+// import OpenAI from 'openai';
+// import axios from 'axios';
+// import mongoose from 'mongoose';
+// import CompanyInfo from '@/src/models/CompanyInfo';
+// import dotenv from 'dotenv';
+
+// dotenv.config({ path: '.env.local' });
+
+// const MONGODB_URI = process.env.MONGODB_URI;
+// if (!mongoose.connection.readyState) {
+//   mongoose.connect(MONGODB_URI, {
+//     useNewUrlParser: true,
+//     useUnifiedTopology: true,
+//   }).then(() => console.log('Connected to MongoDB Atlas'))
+//     .catch(err => console.error('MongoDB connection error:', err));
+// }
+
+// const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+// // Upstox API configuration
+// const UPSTOX_BASE_URL = 'https://api.upstox.com';
+// const UPSTOX_ACCESS_TOKEN = process.env.UPSTOX_ACCESS_TOKEN; // must be generated via your Upstox app
+
+// // --- Function Implementations ---
+
+// // Fetch real-time stock prices using Upstox LTP endpoint.
+// // Assumes instrument tokens in the format "NSE_EQ|<symbol>".
+// async function getStockPrice(symbols) {
+//     const results = [];
+//     for (const symbol of symbols) {
+//       try {
+//         // Format instrument token for Upstox: e.g. "NSE_EQ|RELIANCE"
+//         const instrument = `NSE_EQ|${symbol}`;
+//         const response = await axios.get(`${UPSTOX_BASE_URL}/v2/market-quote/ltp`, {
+//           params: { instruments: instrument },
+//           headers: {
+//             'Authorization': `Bearer ${UPSTOX_ACCESS_TOKEN}`,
+//             'Content-Type': 'application/json'
+//           },
+//         });
+//         // Response expected to be like: { ltp: { "NSE_EQ|RELIANCE": 2000.45 } }
+//         const ltp = response.data.ltp && response.data.ltp[instrument] ? response.data.ltp[instrument] : null;
+//         results.push({ symbol, ltp, name: symbol });
+//       } catch (error) {
+//         console.error(`Error fetching stock price for ${symbol}:`, error.message);
+//         results.push({ symbol, error: 'Unable to fetch data' });
+//       }
+//     }
+//     return results;
+//   }
+  
+
+// // Fetch top stocks using Upstox full market quote endpoint.
+// // Sorting is based on either market cap or performance.
+// async function getTopStocks(filter, limit = 10) {
+//   try {
+//     const response = await axios.get(`${UPSTOX_BASE_URL}/v2/market-quote/quotes`, {
+//       params: { exchange: 'NSE_EQ' },
+//       headers: {
+//         'Authorization': `Bearer ${UPSTOX_ACCESS_TOKEN}`,
+//         'Content-Type': 'application/json'
+//       },
+//     });
+//     let quotes = response.data.quotes || [];
+//     // Sort based on the filter criteria
+//     if (filter === 'performance') {
+//       quotes.sort((a, b) => b.changePercentage - a.changePercentage);
+//     } else if (filter === 'market_cap') {
+//       quotes.sort((a, b) => b.marketCap - a.marketCap);
+//     }
+//     quotes = quotes.slice(0, limit);
+//     // Merge required fields
+//     const merged = quotes.map(stock => ({
+//       symbol: stock.ticker,
+//       ltp: stock.ltp,
+//       change: stock.change,
+//       changePercentage: stock.changePercentage,
+//       companyName: stock.companyName,
+//     }));
+//     return merged;
+//   } catch (error) {
+//     console.error('Error fetching top stocks:', error.message);
+//     return { error: 'Unable to fetch top stocks' };
+//   }
+// }
+
+// // For crypto data we fallback to CoinGecko as Upstox does not provide crypto data.
+// async function getCryptoPrice(symbols) {
+//   const results = [];
+//   for (const symbol of symbols) {
+//     try {
+//       // Assume CoinGecko id is the lowercase symbol.
+//       const response = await axios.get('https://api.coingecko.com/api/v3/coins/markets', {
+//         params: {
+//           vs_currency: 'usd',
+//           ids: symbol.toLowerCase(),
+//           order: 'market_cap_desc',
+//           per_page: 1,
+//           page: 1,
+//           sparkline: false,
+//         },
+//       });
+//       const data = response.data[0];
+//       results.push({
+//         symbol: data.symbol.toUpperCase(),
+//         ltp: data.current_price,
+//         name: data.name,
+//       });
+//     } catch (error) {
+//       console.error(`Error fetching crypto price for ${symbol}:`, error.message);
+//       results.push({ symbol, error: 'Unable to fetch data' });
+//     }
+//   }
+//   return results;
+// }
+
+// async function getTopCryptos(filter, limit = 10) {
+//   try {
+//     const response = await axios.get('https://api.coingecko.com/api/v3/coins/markets', {
+//       params: {
+//         vs_currency: 'usd',
+//         order: filter === 'performance' ? 'price_change_percentage_24h_desc' : 'market_cap_desc',
+//         per_page: limit,
+//         page: 1,
+//         sparkline: false,
+//       },
+//     });
+//     return response.data.map(crypto => ({
+//       symbol: crypto.symbol.toUpperCase(),
+//       ltp: crypto.current_price,
+//       marketCap: crypto.market_cap,
+//       changePercentage: crypto.price_change_percentage_24h,
+//       name: crypto.name,
+//     }));
+//   } catch (error) {
+//     console.error('Error fetching top cryptos:', error.message);
+//     return { error: 'Unable to fetch top cryptos' };
+//   }
+// }
+
+// // Fetch company information from MongoDB.
+// async function getCompanyInfo(args) {
+//   let category = args?.category || 'all';
+//   if (category === 'subscription') {
+//     category = 'pricing';
+//   }
+//   const companyDoc = await CompanyInfo.findOne({ name: "Profit Flow" }).lean();
+//   if (!companyDoc) {
+//     throw new Error("Company information not found in the database.");
+//   }
+//   return category === 'all' ? companyDoc : { [category]: companyDoc[category] };
+// }
+
+// // --- Next.js API Route ---
+// // Note: We leave your original function-call structure intact so that OpenAI can decide which function to call.
+// export async function POST(request) {
+//   try {
+//     const { messages } = await request.json();
+
+//     const initialResponse = await openai.chat.completions.create({
+//       model: 'gpt-4o',
+//       messages,
+//       functions: [
+//         {
+//           name: 'get_stock_price',
+//           description: 'Get real-time stock price from Upstox',
+//           parameters: {
+//             type: 'object',
+//             properties: {
+//               symbols: {
+//                 type: 'array',
+//                 items: { type: 'string' },
+//                 description: 'Stock symbols e.g., ["RELIANCE", "TCS"]'
+//               }
+//             },
+//             required: ['symbols'],
+//           },
+//         },
+//         {
+//           name: 'get_crypto_price',
+//           description: 'Get real-time cryptocurrency price using CoinGecko',
+//           parameters: {
+//             type: 'object',
+//             properties: {
+//               symbols: {
+//                 type: 'array',
+//                 items: { type: 'string' },
+//                 description: 'Crypto symbols e.g., ["BTC", "ETH"]'
+//               }
+//             },
+//             required: ['symbols'],
+//           },
+//         },
+//         {
+//           name: 'get_top_stocks',
+//           description: 'Get top stocks from Upstox data by market cap or performance',
+//           parameters: {
+//             type: 'object',
+//             properties: {
+//               filter: {
+//                 type: 'string',
+//                 enum: ['market_cap', 'performance'],
+//                 description: 'Filter by market cap or performance'
+//               },
+//               limit: {
+//                 type: 'number',
+//                 description: 'Number of top stocks to fetch'
+//               }
+//             },
+//             required: ['filter'],
+//           },
+//         },
+//         {
+//           name: 'get_top_cryptos',
+//           description: 'Get top cryptocurrencies by market cap or performance',
+//           parameters: {
+//             type: 'object',
+//             properties: {
+//               filter: {
+//                 type: 'string',
+//                 enum: ['market_cap', 'performance'],
+//                 description: 'Filter by market cap or performance'
+//               },
+//               limit: {
+//                 type: 'number',
+//                 description: 'Number of top cryptos to fetch'
+//               }
+//             },
+//             required: ['filter'],
+//           },
+//         },
+//         {
+//           name: 'get_company_info',
+//           description: 'Get information about Profit Flow company and services',
+//           parameters: {
+//             type: 'object',
+//             properties: {
+//               category: {
+//                 type: 'string',
+//                 enum: ['all', 'features', 'pricing', 'benefits', 'support', 'faq', 'subscription'],
+//                 description: 'Category of information requested'
+//               },
+//             },
+//           },
+//         },
+//       ],
+//       function_call: 'auto',
+//     });
+
+//     const message = initialResponse.choices[0].message;
+//     if (message.function_call) {
+//       const functionName = message.function_call.name;
+//       const args = JSON.parse(message.function_call.arguments);
+//       let functionResponse;
+//       switch (functionName) {
+//         case 'get_stock_price':
+//           functionResponse = await getStockPrice(args.symbols);
+//           break;
+//         case 'get_crypto_price':
+//           functionResponse = await getCryptoPrice(args.symbols);
+//           break;
+//         case 'get_top_stocks':
+//           functionResponse = await getTopStocks(args.filter, args.limit || 10);
+//           break;
+//         case 'get_top_cryptos':
+//           functionResponse = await getTopCryptos(args.filter, args.limit || 10);
+//           break;
+//         case 'get_company_info':
+//           functionResponse = await getCompanyInfo(args);
+//           break;
+//         default:
+//           functionResponse = { error: 'Function not supported' };
+//       }
+//       let finalResponse;
+//       if (functionName === 'get_company_info') {
+//         finalResponse = await openai.chat.completions.create({
+//           model: 'gpt-4o',
+//           messages: [
+//             ...messages,
+//             {
+//               role: 'system',
+//               content: 'You are a friendly advisor providing company information. Keep your response clear, concise, and conversational. Limit your answer to under three paragraphs and include any offers naturally.',
+//             },
+//             {
+//               role: 'user',
+//               content: `Company Data:\n${JSON.stringify(functionResponse, null, 2)}`,
+//             },
+//           ],
+//           temperature: 0.7,
+//           max_tokens: 500,
+//         });
+//       } else {
+//         const responseTemplate = `Please generate a creative and professional financial update using the data provided below.
+  
+// • **Current Data / Key Metrics:** Clearly state the current price or list top metrics.
+// • **Statistics Summary:** Present the key statistics as bullet points with adequate spacing.
+// • **Market Context:** Include a brief one to two sentence overview of the market.
+// • **Relevant News:** Add a note on recent news (use a placeholder if actual data is unavailable).
+// • **Disclaimer:** End with a standard disclaimer.
+  
+// Data:
+// ${JSON.stringify(functionResponse, null, 2)}
+
+// Ensure your response is engaging, well-structured, and adapts to the query context.`;
+//         finalResponse = await openai.chat.completions.create({
+//           model: 'gpt-4o',
+//           messages: [
+//             ...messages,
+//             {
+//               role: 'system',
+//               content: 'You are a financial analyst assistant. Provide responses in structured markdown format with clear bullet points, proper spacing between topics, and dynamic chart headings based on the query. Respond in a professional tone and include suggestions when relevant.',
+//             },
+//             {
+//               role: 'user',
+//               content: responseTemplate,
+//             },
+//           ],
+//           temperature: 0.6,
+//           max_tokens: 1000,
+//         });
+//       }
+//       return NextResponse.json({
+//         ...finalResponse.choices[0].message,
+//         rawData: functionResponse,
+//         functionName: message.function_call.name,
+//       });
+//     } else {
+//       // If no function call is detected, fallback to a simple response.
+//       return NextResponse.json({
+//         role: 'assistant',
+//         content: message.content || "I'm here to help! Could you please clarify your request?",
+//       });
+//     }
+//   } catch (error) {
+//     console.error('API Error:', error.message);
+//     return NextResponse.json(
+//       {
+//         error: 'Financial data currently unavailable. Please try again later.',
+//         details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+//       },
+//       { status: 500 }
+//     );
+//   }
+// }
+
+// /*
+// Steps to Create and Use the Upstox API:
+
+// 1. Sign up for an Upstox account and log in to the Upstox Pro app or web platform.
+// 2. Navigate to the 'Developer' section (or Developer Console) and create a new app.
+// 3. Generate your API key and API secret from the Upstox Developer Console.
+// 4. Use these credentials to obtain an access token by making a POST request to:
+//    https://api.upstox.com/v2/login/authorization/token
+//    (Include the required parameters: client_id, client_secret, code, redirect_uri, grant_type)
+// 5. Once you receive the access token, store it in your .env.local file as UPSTOX_ACCESS_TOKEN.
+// 6. In this code, the access token is used in the Authorization header for Upstox API calls.
+// 7. For more details on the endpoints and parameters, review the Upstox API documentation:
+//    https://upstox.com/developer/api-documentation/ 
+// 8. Note: Upstox does not provide crypto data; hence, CoinGecko is used as a fallback.
+
+// This code preserves your original OpenAI function-call mechanism while using the Upstox API for stock data.
+// */
+

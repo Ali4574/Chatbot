@@ -1,0 +1,36 @@
+{
+  "type": "module",
+  "name": "stock-chatbot",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/server": "^11.11.0",
+    "@emotion/styled": "^11.14.0",
+    "@mui/icons-material": "^6.4.2",
+    "@mui/material": "^6.4.2",
+    "axios": "^1.7.9",
+    "chart.js": "^4.4.7",
+    "dotenv": "^16.4.7",
+    "express-rate-limit": "^7.5.0",
+    "lru-cache": "^11.0.2",
+    "mongodb": "^6.13.0",
+    "mongoose": "^8.9.6",
+    "next": "15.1.6",
+    "openai": "^4.81.0",
+    "react": "^19.0.0",
+    "react-chartjs-2": "^5.3.0",
+    "react-dom": "^19.0.0",
+    "react-markdown": "^9.0.3",
+    "recharts": "^2.15.1",
+    "upstox-js-sdk": "^2.13.0",
+    "winston": "^3.17.0",
+    "yahoo-finance2": "^2.13.3"
+  }
+}
