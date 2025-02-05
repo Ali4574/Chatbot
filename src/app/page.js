@@ -1,4 +1,4 @@
-"use client"
+"use client";
 import { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
 import {
@@ -40,13 +40,11 @@ ChartJS.register(
     Legend
 );
 
-// Fade-in animation for messages
 const fadeIn = keyframes`
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
 `;
 
-// Transparent container for chat messages
 const ChatContainer = styled(Box)(({ theme }) => ({
     height: '80vh',
     display: 'flex',
@@ -58,7 +56,6 @@ const ChatContainer = styled(Box)(({ theme }) => ({
     overflow: 'hidden',
 }));
 
-// Styled container for user questions with gradient background
 const QuestionBox = styled(Box)(({ theme }) => ({
     alignSelf: 'flex-end',
     background: 'linear-gradient(45deg, #2196f3 30%, #21cbf3 90%)',
@@ -70,7 +67,6 @@ const QuestionBox = styled(Box)(({ theme }) => ({
     animation: `${fadeIn} 0.5s ease-out`,
 }));
 
-// Assistant answer text container
 const AnswerText = styled(Box)(({ theme }) => ({
     alignSelf: 'flex-start',
     padding: theme.spacing(1.5),
@@ -90,13 +86,11 @@ const AnswerText = styled(Box)(({ theme }) => ({
     }
 }));
 
-// Container for chart toggle and chart display
 const ChartContainerWrapper = styled(Box)(({ theme }) => ({
     marginTop: theme.spacing(2),
     marginBottom: theme.spacing(2),
 }));
 
-// ChartDisplay component for rendering charts
 const ChartDisplay = ({ chartData, chartType, chartTitle }) => {
     const adjustedData = JSON.parse(JSON.stringify(chartData));
     if (chartType === 'bar') {
@@ -127,9 +121,8 @@ const ChartDisplay = ({ chartData, chartType, chartTitle }) => {
                 title: {
                     display: true,
                     text:
-                        adjustedData.labels &&
-                        adjustedData.labels[0] &&
-                        (adjustedData.labels[0].includes('-') || adjustedData.labels[0].includes('/'))
+                        (chartData.labels && chartData.labels[0] && 
+                         (chartData.labels[0].includes('-') || chartData.labels[0].includes('/')))
                             ? 'Time'
                             : 'Symbol',
                     color: '#fff',
@@ -150,7 +143,6 @@ const ChartDisplay = ({ chartData, chartType, chartTitle }) => {
     );
 };
 
-// Custom components for ReactMarkdown
 const markdownComponents = {
     p: ({ node, ...props }) => (
         <p style={{ textAlign: 'justify', textIndent: '1em' }} {...props} />
@@ -208,7 +200,6 @@ export default function Chat() {
     const [chartType, setChartType] = useState('line');
     const messagesEndRef = useRef(null);
 
-    // Default example questions
     const defaultQuestions = [
         'top 2 stocks',
         'price of infosys stock',
@@ -218,7 +209,6 @@ export default function Chat() {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
 
-    // Send message function
     const sendMessage = async (messageContent) => {
         if (!messageContent.trim() || loading) return;
         setLoading(true);
@@ -230,110 +220,92 @@ export default function Chat() {
                 messages: [...messages, userMessage],
             });
             const assistantMessage = data;
-            console.log(assistantMessage, "assistantMessage")
-            // Process rawData (if provided) to build chartData and chart title
+            // Process rawData to build chartData if available.
             if (assistantMessage.rawData && assistantMessage.rawData.length > 0) {
                 let chartData;
-                const assetNames = assistantMessage.rawData
-                    .map((item) => item.name || item.symbol)
-                    .filter(Boolean);
-                let chartTitle = assetNames.join(' & ');
-
-                if (assistantMessage.rawData[0].dates && assistantMessage.rawData[0].prices) {
-                    if (assistantMessage.rawData[0].prices.length > 1) {
-                        chartData = {
-                            labels: assistantMessage.rawData[0].dates,
-                            datasets: assistantMessage.rawData.map((item, index) => ({
-                                label: item.symbol || 'Price',
-                                data: item.prices,
-                                fill: false,
-                                borderColor: `hsl(${(index * 360) / assistantMessage.rawData.length}, 70%, 50%)`,
-                                backgroundColor: `hsl(${(index * 360) / assistantMessage.rawData.length}, 70%, 50%)`,
-                                tension: 0.1,
-                            })),
-                        };
-                        chartTitle += ' Price History';
-                    } else {
-                        chartData = {
-                            labels: assetNames,
-                            datasets: [
-                                {
-                                    label: 'Current Price',
-                                    data: assistantMessage.rawData.map((item) => item.prices[0]),
-                                    backgroundColor: assistantMessage.rawData.map(
-                                        (_, index) =>
-                                            `hsl(${(index * 360) / assistantMessage.rawData.length}, 70%, 50%)`
-                                    ),
-                                    borderColor: assistantMessage.rawData.map(
-                                        (_, index) =>
-                                            `hsl(${(index * 360) / assistantMessage.rawData.length}, 70%, 50%)`
-                                    ),
-                                    borderWidth: 1,
-                                },
-                            ],
-                        };
-                        chartTitle += ' Current Price';
-                    }
-                } else if (assistantMessage.rawData[0].timestamp) {
-                    const labels = assistantMessage.rawData.map((item) => item.timestamp);
-                    const prices = assistantMessage.rawData.map((item) => item.price);
+                let chartTitle = '';
+                
+                // Check if historical data exists on the first asset
+                if (assistantMessage.rawData[0].history && assistantMessage.rawData[0].history.length > 0) {
+                  // Use history dates as labels (format as needed)
+                  const labels = assistantMessage.rawData[0].history.map(item => {
+                    // Optionally, format the date string (e.g., MM/DD)
+                    return new Date(item.date).toLocaleDateString();
+                  });
+                  
+                  // For each asset, build a dataset from its historical prices
+                  const datasets = assistantMessage.rawData.map((asset, index) => ({
+                    label: asset.symbol || asset.name || `Asset ${index + 1}`,
+                    data: asset.history.map(item => item.price),
+                    fill: false,
+                    borderColor: `hsl(${(index * 360) / assistantMessage.rawData.length}, 70%, 50%)`,
+                    backgroundColor: `hsl(${(index * 360) / assistantMessage.rawData.length}, 70%, 50%)`,
+                    tension: 0.1,
+                  }));
+                  
+                  chartData = { labels, datasets };
+                  chartTitle = `${assistantMessage.rawData.map(item => item.symbol).join(' & ')} Price History`;
+                } else if (assistantMessage.rawData[0].dates && assistantMessage.rawData[0].prices) {
+                  // Fallback: if realtime data arrays contain more than one element, use them
+                  if (assistantMessage.rawData[0].prices.length > 1) {
                     chartData = {
-                        labels,
-                        datasets: [
-                            {
-                                label: 'Price',
-                                data: prices,
-                                fill: false,
-                                borderColor: '#4bd8d8',
-                                backgroundColor: '#4bd8d8',
-                                tension: 0.1,
-                            },
-                        ],
+                      labels: assistantMessage.rawData[0].dates,
+                      datasets: assistantMessage.rawData.map((item, index) => ({
+                        label: item.symbol || 'Price',
+                        data: item.prices,
+                        fill: false,
+                        borderColor: `hsl(${(index * 360) / assistantMessage.rawData.length}, 70%, 50%)`,
+                        backgroundColor: `hsl(${(index * 360) / assistantMessage.rawData.length}, 70%, 50%)`,
+                        tension: 0.1,
+                      })),
                     };
-                    chartTitle += ' Price Trend';
-                } else if (assistantMessage.rawData[0].price) {
-                    const labels = assistantMessage.rawData.map(() =>
-                        new Date().toLocaleTimeString()
-                    );
-                    const prices = assistantMessage.rawData.map((item) => item.price);
+                    chartTitle = `${assistantMessage.rawData.map(item => item.symbol).join(' & ')} Price History`;
+                  } else {
+                    // Only a single price, so show current price only
                     chartData = {
-                        labels,
-                        datasets: [
-                            {
-                                label: 'Price',
-                                data: prices,
-                                backgroundColor: '#4bd8d8',
-                                borderColor: '#4bd8d8',
-                                borderWidth: 1,
-                            },
-                        ],
+                      labels: assistantMessage.rawData.map((item, index) => item.symbol || `Asset ${index + 1}`),
+                      datasets: [
+                        {
+                          label: 'Current Price',
+                          data: assistantMessage.rawData.map(item => item.prices[0]),
+                          backgroundColor: assistantMessage.rawData.map(
+                            (_, index) =>
+                              `hsl(${(index * 360) / assistantMessage.rawData.length}, 70%, 50%)`
+                          ),
+                          borderColor: assistantMessage.rawData.map(
+                            (_, index) =>
+                              `hsl(${(index * 360) / assistantMessage.rawData.length}, 70%, 50%)`
+                          ),
+                          borderWidth: 1,
+                        },
+                      ],
                     };
-                    chartTitle += ' Current Price';
+                    chartTitle = `${assistantMessage.rawData.map(item => item.symbol).join(' & ')} Current Price`;
+                  }
                 }
                 assistantMessage.chartData = chartData;
                 assistantMessage.chartTitle = chartTitle;
-            }
+              }
+              
 
             setMessages((prev) => [...prev, assistantMessage]);
         } catch (error) {
-            console.error("Client-side error:", error);  // Log on the client-side too!
+            console.error("Client-side error:", error);
             setMessages((prev) => [
                 ...prev,
-                { role: '⚠️ I encountered an error. Please try again or ask about financial topics.' },
+                { role: '⚠️', content: "I encountered an error. Please try again or ask about financial topics." },
             ]);
         } finally {
             setLoading(false);
         }
     };
 
-    // Handle form submit
     const handleSubmit = async (e) => {
         e.preventDefault();
         await sendMessage(input);
         setInput('');
     };
 
-    // Handle default question click
     const handleExampleClick = (example) => {
         sendMessage(example);
     };
@@ -361,7 +333,6 @@ export default function Chat() {
                 PROFIT FLOW
             </Typography>
 
-            {/* Default Example Questions */}
             {messages.length === 0 && (
                 <Box sx={{ mb: 2, display: 'flex', gap: 2, justifyContent: 'center' }}>
                     {defaultQuestions.map((question, idx) => (
