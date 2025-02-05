@@ -213,11 +213,10 @@ async function getCryptoPrice(symbols) {
 async function getTopStocks(limit = 10) {
   try {
     const trending = await yahooFinance.trendingSymbols('US');
-    let symbols =
-      trending && trending.quotes
-        ? trending.quotes.map((q) => q.symbol)
-        : ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA'];
-    symbols = symbols.slice(0, limit);
+    if (!trending?.quotes?.length) {
+      throw new Error('No trending stocks data available');
+    }
+    const symbols = trending.quotes.map((q) => q.symbol).slice(0, limit);
     const results = [];
     for (const symbol of symbols) {
       try {
@@ -250,24 +249,26 @@ async function getTopStocks(limit = 10) {
  */
 async function getTopCryptos(limit = 10) {
   try {
-    const cryptoTickers = [
-      'BTC-USD',
-      'ETH-USD',
-      'XRP-USD',
-      'LTC-USD',
-      'BCH-USD',
-      'ADA-USD',
-      'DOGE-USD',
-    ];
+    // Fetch top cryptos by market cap from CoinGecko
+    const response = await fetch(
+      `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=${limit}&page=1`
+    );
+    const coins = await response.json();
+    if (!coins || !coins.length) {
+      throw new Error('Failed to fetch top cryptocurrencies');
+    }
+
     const results = [];
-    for (const symbol of cryptoTickers.slice(0, limit)) {
+    for (const coin of coins) {
+      const symbol = `${coin.symbol.toUpperCase()}-USD`; // Convert to Yahoo Finance format
       try {
+        // Fetch data from Yahoo Finance
         const quote = await yahooFinance.quote(symbol);
         const rtData = await fetchRealtimeData(symbol);
         if (!rtData) continue;
         results.push({
           symbol,
-          name: quote.shortName || symbol,
+          name: quote.shortName || coin.name,
           dates: rtData.dates,
           prices: rtData.prices,
           change: quote.regularMarketChange,
@@ -275,7 +276,7 @@ async function getTopCryptos(limit = 10) {
           marketCap: quote.marketCap,
         });
       } catch (err) {
-        console.error(`Error fetching realtime data for ${symbol}:`, err);
+        console.error(`Error processing ${symbol}:`, err);
       }
     }
     return results;
