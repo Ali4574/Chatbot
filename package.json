@@ -10,6 +10,8 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.741.0",
+    "@aws-sdk/lib-dynamodb": "^3.741.0",
     "@emotion/react": "^11.14.0",
     "@emotion/server": "^11.11.0",
     "@emotion/styled": "^11.14.0",
@@ -31,6 +33,7 @@
     "react-markdown": "^9.0.3",
     "recharts": "^2.15.1",
     "upstox-js-sdk": "^2.13.0",
+    "uuid": "^11.0.5",
     "winston": "^3.17.0",
     "yahoo-finance2": "^2.13.3"
   }
