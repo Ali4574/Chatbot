@@ -7,10 +7,15 @@ import CompanyInfo from '@/src/models/CompanyInfo';
 import dotenv from 'dotenv';
 import yahooFinance from 'yahoo-finance2';
 import axios from 'axios';
+import { DynamoDBClient, PutItemCommand } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocumentClient, PutCommand } from "@aws-sdk/lib-dynamodb";
+import { v4 as uuidv4 } from 'uuid';
 
 dotenv.config({ path: '.env.local' });
 
 const MONGODB_URI = process.env.MONGODB_URI;
+const DYNAMODB_TABLE = process.env.DYNAMODB_TABLE || 'Chatlogs'; // set your table name in .env.local
+const AWS_REGION = process.env.AWS_REGION || 'ap-south-1';
 
 // Reuse MongoDB connection in a serverless environment
 if (!mongoose.connection.readyState) {
@@ -24,6 +29,10 @@ if (!mongoose.connection.readyState) {
 }
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+// Create a DynamoDB client
+const ddbClient = new DynamoDBClient({ region: AWS_REGION });
+const ddbDocClient = DynamoDBDocumentClient.from(ddbClient);
 
 const functions = [
   {
@@ -51,7 +60,7 @@ const functions = [
   {
     name: 'get_crypto_price',
     description:
-      'Get real-time cryptocurrency price (current quote) and basic information for one or more crypto symbols. Optionally, specify the currency ("USD" or "INR") and a maximum price (underPrice).',
+      'Get real-time cryptocurrency price (current quote), historical price data, and basic information for one or more crypto symbols. Optionally, specify the currency ("USD" or "INR") and a maximum price (underPrice).',
     parameters: {
       type: 'object',
       properties: {
@@ -142,6 +151,50 @@ const functions = [
       },
     },
   },
+  {
+    name: 'get_market_update',
+    description:
+      'Get a comprehensive update of the Indian stock market that includes trending NSE stocks and current market news.',
+    parameters: {
+      type: 'object',
+      properties: {
+        limit: {
+          type: 'number',
+          description: 'Number of top stocks to fetch (default is 10).',
+        },
+        underPrice: {
+          type: 'number',
+          description:
+            'Optional: filter stocks with price under this value (in INR).',
+        },
+      },
+    },
+  },
+  {
+    name: 'get_crypto_market_update',
+    description:
+      'Get a comprehensive update of the cryptocurrency market that includes trending cryptocurrencies and current crypto market news.',
+    parameters: {
+      type: 'object',
+      properties: {
+        limit: {
+          type: 'number',
+          description: 'Number of top cryptocurrencies to fetch (default is 10).',
+        },
+        currency: {
+          type: 'string',
+          enum: ['USD', 'INR'],
+          description:
+            'Currency for the price. Default is USD. For INR conversion, use "INR".',
+        },
+        underPrice: {
+          type: 'number',
+          description:
+            'Optional: filter cryptocurrencies with current price under this value (in the specified currency).',
+        },
+      },
+    },
+  },
 ];
 
 /**
@@ -151,7 +204,7 @@ async function fetchRealtimeData(ticker) {
   try {
     const quote = await yahooFinance.quote(ticker);
     if (!quote) return null;
-    const now = new Date().toLocaleString();
+    const now = new Date().toISOString(); // "2025-02-06T05:00:00.000Z"
     return { dates: [now], prices: [quote.regularMarketPrice] };
   } catch (error) {
     console.error(`Error fetching realtime data for ${ticker}:`, error);
@@ -177,14 +230,70 @@ async function fetchHistoricalData(ticker, period1, period2, interval = '1d') {
 }
 
 /**
+ * Helper: Fetch detailed info (company summary, profile, etc.) for a ticker.
+ */
+async function fetchDetailedInfo(ticker) {
+  try {
+    const detailedInfo = await yahooFinance.quoteSummary(ticker, {
+      modules: ['summaryDetail', 'summaryProfile', 'assetProfile']
+    });
+    return detailedInfo;
+  } catch (error) {
+    console.error(`Error fetching detailed info for ${ticker}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Helper: Fetch recent news for a ticker using the search endpoint.
+ */
+async function fetchNews(ticker) {
+  try {
+    const searchResult = await yahooFinance.search(ticker, { lang: 'en-IN', region: 'IN' });
+    return searchResult.news || [];
+  } catch (error) {
+    console.error(`Error fetching news for ${ticker}:`, error);
+    return [];
+  }
+}
+
+/**
+ * New Helper: Fetch general market news using a broad search query.
+ */
+async function fetchMarketNews() {
+  try {
+    // Use a broad search query to retrieve general Indian market news
+    const searchResult = await yahooFinance.search("Indian stock market", { lang: 'en-IN', region: 'IN' });
+    return searchResult.news || [];
+  } catch (error) {
+    console.error("Error fetching market news:", error);
+    return [];
+  }
+}
+
+/**
+ * New Helper: Fetch crypto market news using a broad search query.
+ */
+async function fetchCryptoMarketNews() {
+  try {
+    // Use a broad search query to retrieve crypto market news
+    const searchResult = await yahooFinance.search("cryptocurrency market news", { lang: 'en-IN', region: 'IN' });
+    return searchResult.news || [];
+  } catch (error) {
+    console.error("Error fetching crypto market news:", error);
+    return [];
+  }
+}
+
+/**
  * Fetch real-time stock data for Indian stocks.
  * This function automatically appends ".NS" to symbols if not provided.
- * It also fetches historical data (e.g., past 30 days) to build a chart.
  */
 async function getStockPrice(symbols, underPrice) {
   const results = [];
   const now = new Date();
-  const past30Days = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const past7Days = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000); // past 7 days
+
   for (let symbol of symbols) {
     try {
       let querySymbol = symbol;
@@ -197,7 +306,10 @@ async function getStockPrice(symbols, underPrice) {
         results.push({ symbol, error: 'No real-time data available' });
         continue;
       }
-      const history = await fetchHistoricalData(querySymbol, past30Days, now, '1d');
+      const history = await fetchHistoricalData(querySymbol, past7Days, now, '1d');
+      const detailedInfo = await fetchDetailedInfo(querySymbol);
+      const news = await fetchNews(querySymbol);
+
       results.push({
         symbol: querySymbol,
         name: quote.longName || symbol,
@@ -207,6 +319,8 @@ async function getStockPrice(symbols, underPrice) {
         change: quote.regularMarketChange,
         changePercentage: quote.regularMarketChangePercent,
         marketCap: quote.marketCap,
+        detailedInfo, // contains summaryDetail, summaryProfile, assetProfile
+        news // recent news articles
       });
     } catch (error) {
       console.error(`Error fetching stock price for ${symbol}:`, error);
@@ -221,13 +335,14 @@ async function getStockPrice(symbols, underPrice) {
 
 /**
  * Fetch trending (top) Indian stocks in real time using NSE data.
- * This function uses NSE's live-analysis API and fetches the trending stocks.
- * Optionally, it filters results under a specified price.
  */
 async function getTopStocks(limit = 10, underPrice) {
   let results = [];
+  const now = new Date();
+  const past7Days = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000); // past 7 days
+
   try {
-    // Step 1: Get cookies from NSE homepage
+    // Get cookies from NSE homepage
     const cookieResponse = await axios.get('https://www.nseindia.com', {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
@@ -237,7 +352,7 @@ async function getTopStocks(limit = 10, underPrice) {
     const cookies = cookieResponse.headers['set-cookie'];
     const cookieHeader = cookies ? cookies.join('; ') : '';
 
-    // Step 2: Use the cookies for the trending stocks endpoint
+    // Use cookies to access the trending stocks endpoint
     const nseResponse = await axios.get(
       'https://www.nseindia.com/api/live-analysis-variations?index=gainers',
       {
@@ -264,14 +379,21 @@ async function getTopStocks(limit = 10, underPrice) {
         const quote = await yahooFinance.quote(symbol);
         const rtData = await fetchRealtimeData(symbol);
         if (!rtData) continue;
+        // Fetch 7-day historical data for each top stock
+        const history = await fetchHistoricalData(symbol, past7Days, now, '1d');
+        const detailedInfo = await fetchDetailedInfo(symbol);
+        const news = await fetchNews(symbol);
         results.push({
           symbol,
           name: quote.longName || symbol,
           dates: rtData.dates,
           prices: rtData.prices,
+          history,
           change: quote.regularMarketChange,
           changePercentage: quote.regularMarketChangePercent,
           marketCap: quote.marketCap,
+          detailedInfo,
+          news
         });
       } catch (err) {
         console.error(`Error fetching realtime data for ${symbol}:`, err);
@@ -289,8 +411,10 @@ async function getTopStocks(limit = 10, underPrice) {
 
 /**
  * Fetch real-time cryptocurrency data.
- * If currency is "INR", convert the USD price using the latest conversion rate from Yahoo Finance.
- * Optionally filter results under a specified price.
+ * This function mirrors the stocks function by fetching:
+ * - Realtime data
+ * - Historical data (past 7 days)
+ * - Detailed info and recent news (if available)
  */
 async function getCryptoPrice(symbols, currency = 'USD', underPrice) {
   let conversionRate = 1;
@@ -303,6 +427,8 @@ async function getCryptoPrice(symbols, currency = 'USD', underPrice) {
     }
   }
   const results = [];
+  const now = new Date();
+  const past7Days = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000); // past 7 days
   for (let symbol of symbols) {
     try {
       if (!symbol.includes('-')) {
@@ -318,14 +444,28 @@ async function getCryptoPrice(symbols, currency = 'USD', underPrice) {
       if (currency === 'INR') {
         price = price * conversionRate;
       }
+      // Fetch historical data similar to stocks
+      const history = await fetchHistoricalData(symbol, past7Days, now, '1d');
+      // Optionally, fetch detailed info and news for a more complete response
+      let detailedInfo = null;
+      let news = [];
+      try {
+        detailedInfo = await fetchDetailedInfo(symbol);
+        news = await fetchNews(symbol);
+      } catch (err) {
+        console.error(`Error fetching detailed info or news for ${symbol}:`, err);
+      }
       results.push({
         symbol,
         name: quote.shortName || symbol,
         dates: rtData.dates,
         prices: [price],
+        history,
         change: quote.regularMarketChange,
         changePercentage: quote.regularMarketChangePercent,
         marketCap: quote.marketCap,
+        detailedInfo,
+        news,
       });
     } catch (error) {
       console.error(`Error fetching crypto price for ${symbol}:`, error);
@@ -341,8 +481,6 @@ async function getCryptoPrice(symbols, currency = 'USD', underPrice) {
 
 /**
  * Fetch trending (top) cryptocurrencies in real time.
- * If currency is "INR", convert prices using the USD to INR rate.
- * Optionally filter results under a specified price.
  */
 async function getTopCryptos(limit = 10, currency = 'USD', underPrice) {
   let conversionRate = 1;
@@ -351,7 +489,7 @@ async function getTopCryptos(limit = 10, currency = 'USD', underPrice) {
       const rateQuote = await yahooFinance.quote('USDINR=X');
       conversionRate = rateQuote.regularMarketPrice || 1;
     } catch (error) {
-      console.error('Error fetching conversion rate:', error);
+      console.error('Error fetching conversion rate:', error);  
     }
   }
   try {
@@ -363,6 +501,8 @@ async function getTopCryptos(limit = 10, currency = 'USD', underPrice) {
       throw new Error('Failed to fetch top cryptocurrencies');
     }
     let results = [];
+    const now = new Date();
+    const past7Days = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     for (const coin of coins) {
       const symbol = `${coin.symbol.toUpperCase()}-USD`; // Yahoo Finance format
       try {
@@ -373,11 +513,14 @@ async function getTopCryptos(limit = 10, currency = 'USD', underPrice) {
         if (currency === 'INR') {
           price = price * conversionRate;
         }
+        // Fetch historical data for the crypto
+        const history = await fetchHistoricalData(symbol, past7Days, now, '1d');
         results.push({
           symbol,
           name: quote.shortName || coin.name,
           dates: rtData.dates,
           prices: [price],
+          history,
           change: quote.regularMarketChange,
           changePercentage: quote.regularMarketChangePercent,
           marketCap: quote.marketCap,
@@ -395,6 +538,30 @@ async function getTopCryptos(limit = 10, currency = 'USD', underPrice) {
     console.error('Error fetching top cryptos:', error);
     return { error: 'Unable to fetch top cryptos' };
   }
+}
+
+/**
+ * New Function: Fetch crypto market update by combining trending cryptos and crypto market news.
+ */
+async function getCryptoMarketUpdate(limit = 10, currency = 'USD', underPrice) {
+  const topCryptos = await getTopCryptos(limit, currency, underPrice);
+  const cryptoNews = await fetchCryptoMarketNews();
+  return {
+    topCryptos,
+    newsHighlights: cryptoNews.slice(0, 5) // return top 5 crypto news headlines for brevity
+  };
+}
+
+/**
+ * New Function: Fetch market update by combining trending stocks and market news.
+ */
+async function getMarketUpdate(limit = 10, underPrice) {
+  const topStocks = await getTopStocks(limit, underPrice);
+  const marketNews = await fetchMarketNews();
+  return {
+    topStocks,
+    newsHighlights: marketNews.slice(0, 5) // return top 5 news headlines for brevity
+  };
 }
 
 /**
@@ -416,6 +583,7 @@ export async function POST(request) {
   try {
     const { messages } = await request.json();
 
+    // Call OpenAI to get the initial assistant response.
     const initialResponse = await openai.chat.completions.create({
       model: 'gpt-4o',
       messages: [
@@ -431,46 +599,45 @@ export async function POST(request) {
     });
     const message = initialResponse.choices[0].message;
 
+    // Generate a unique messageId for logging.
+    const messageId = uuidv4();
+    const userMessages = messages.filter(msg => msg.role === 'user');
+    const lastUserMessage = userMessages.length > 0 ? userMessages[userMessages.length - 1].content : '';
+
+    // If OpenAI requested a function call, process that.
     if (message.function_call) {
       const functionName = message.function_call.name;
       const args = JSON.parse(message.function_call.arguments || '{}');
       let functionResponse;
 
-      // For stock functions, ignore any exchange parameter and use Indian stocks only.
+      // Dispatch to the appropriate helper function.
       switch (functionName) {
         case 'get_stock_price':
-          functionResponse = await getStockPrice(
-            args.symbols,
-            args.underPrice
-          );
+          functionResponse = await getStockPrice(args.symbols, args.underPrice);
           break;
         case 'get_top_stocks':
-          functionResponse = await getTopStocks(
-            args.limit || 10,
-            args.underPrice
-          );
+          functionResponse = await getTopStocks(args.limit || 2, args.underPrice);
           break;
         case 'get_crypto_price':
-          functionResponse = await getCryptoPrice(
-            args.symbols,
-            args.currency || 'USD',
-            args.underPrice
-          );
+          functionResponse = await getCryptoPrice(args.symbols, args.currency || 'USD', args.underPrice);
           break;
         case 'get_top_cryptos':
-          functionResponse = await getTopCryptos(
-            args.limit || 10,
-            args.currency || 'USD',
-            args.underPrice
-          );
+          functionResponse = await getTopCryptos(args.limit || 2, args.currency || 'USD', args.underPrice);
           break;
         case 'get_company_info':
           functionResponse = await getCompanyInfo(args);
+          break;
+        case 'get_market_update':
+          functionResponse = await getMarketUpdate(args.limit || 2, args.underPrice);
+          break;
+        case 'get_crypto_market_update':
+          functionResponse = await getCryptoMarketUpdate(args.limit || 2, args.currency || 'USD', args.underPrice);
           break;
         default:
           functionResponse = { error: 'Function not supported' };
       }
 
+      // Generate the final assistant response (for brevity, similar to your original code)
       let finalResponse;
       if (functionName === 'get_company_info') {
         finalResponse = await openai.chat.completions.create({
@@ -492,18 +659,10 @@ export async function POST(request) {
         });
       } else {
         const responseTemplate = `Please generate a creative and professional financial update using the data provided below.
-
-• **Current Data / Key Metrics:** Clearly state the current price or list top metrics.
-• **Statistics Summary:** Present the key statistics as bullet points with adequate spacing.
-• **Market Context:** Include a brief one to two sentence overview of the market.
-• **Relevant News:** Add a note on recent news (use a placeholder if actual data is unavailable).
-• **Disclaimer:** End with a standard disclaimer.
-
 Data:
 ${JSON.stringify(functionResponse, null, 2)}
 
-Ensure your response is engaging, well-structured, and adapts to the query context.`;
-
+Ensure your response is engaging, well-structured, and adapts to the query context without using tables.`;
         finalResponse = await openai.chat.completions.create({
           model: 'gpt-4o',
           messages: [
@@ -523,17 +682,42 @@ Ensure your response is engaging, well-structured, and adapts to the query conte
         });
       }
 
+      // Write a new log record to DynamoDB with the user query, assistant response, and empty feedback.
+      const logItem = {
+        messageId: messageId,
+        timestamp: new Date().toISOString(),
+        userQuery: lastUserMessage,
+        chatbotResponse: finalResponse.choices[0].message.content,
+        actions: {
+          like: false,
+          dislike: false,
+          report: false,
+          reportMessage: ""
+        },
+      };
+      
+      try {
+        await ddbDocClient.send(new PutCommand({
+          TableName: DYNAMODB_TABLE,
+          Item: logItem,
+        }));
+        console.log('Log written to DynamoDB:', messageId);
+      } catch (ddbError) {
+        console.error('Error writing log to DynamoDB:', ddbError);
+      }
+
       return NextResponse.json({
         ...finalResponse.choices[0].message,
         rawData: functionResponse,
         functionName: message.function_call.name,
+        messageId, // return this ID so that feedback updates can reference it
       });
     } else {
+      // If no function call was made, simply return the assistant content.
       return NextResponse.json({
         role: 'assistant',
         content:
-          message.content ||
-          "I'm here to help! Could you please clarify your request?",
+          message.content || "I'm here to help! Could you please clarify your request?",
       });
     }
   } catch (error) {
